@@ -1,6 +1,6 @@
 {
   "name": "@istrejo/obsidian-mcp",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "MCP server for Obsidian vaults via direct filesystem access. Works with Claude Desktop and Claude Code.",
   "type": "module",
   "bin": {
