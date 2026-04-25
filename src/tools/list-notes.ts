@@ -4,7 +4,7 @@ import path from 'node:path';
 import fg from 'fast-glob';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Config } from '../config.js';
-import { resolveDir } from '../lib/vault.js';
+import { resolveDir, resolveVault, vaultParamDesc } from '../lib/vault.js';
 import { assertSafePath } from '../lib/security.js';
 import { ok, err, type NoteMetadata } from '../types/index.js';
 
@@ -13,18 +13,20 @@ export function registerListNotes(server: McpServer, config: Config): void {
     'list_notes',
     {
       description:
-        'List all notes in the Obsidian vault, optionally filtered by folder. Use this to discover what notes exist before reading or searching them. Returns path, name, size, and last modification time for each note.',
+        'List all notes in an Obsidian vault, optionally filtered by folder. Use this to discover what notes exist before reading or searching them. Returns path, name, size, and last modification time for each note.',
       inputSchema: {
         folder: z.string().optional().describe('Subfolder to filter notes (e.g. "Projects"). Omit to list all notes in the vault.'),
         recursive: z.boolean().optional().default(true).describe('Whether to include notes in subfolders. Defaults to true.'),
+        vault: z.string().optional().describe(vaultParamDesc(config)),
       },
     },
-    async ({ folder, recursive }) => {
+    async ({ folder, recursive, vault }) => {
       try {
-        const baseDir = folder ? resolveDir(config.vaultPath, folder) : config.vaultPath;
+        const vc = resolveVault(config, vault);
+        const baseDir = folder ? resolveDir(vc.path, folder) : vc.path;
 
         if (folder) {
-          assertSafePath(config.vaultPath, baseDir);
+          assertSafePath(vc.path, baseDir);
         }
 
         const pattern = recursive ? '**/*.md' : '*.md';
@@ -38,7 +40,7 @@ export function registerListNotes(server: McpServer, config: Config): void {
         const notes: NoteMetadata[] = await Promise.all(
           files.map(async (file) => {
             const stat = await fs.stat(file);
-            const relativePath = path.relative(config.vaultPath, file);
+            const relativePath = path.relative(vc.path, file);
             return {
               path: relativePath,
               name: path.basename(file, '.md'),
@@ -50,7 +52,7 @@ export function registerListNotes(server: McpServer, config: Config): void {
 
         notes.sort((a, b) => a.path.localeCompare(b.path));
 
-        return ok({ count: notes.length, notes });
+        return ok({ vault: vc.name, count: notes.length, notes });
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
       }

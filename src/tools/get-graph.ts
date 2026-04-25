@@ -4,7 +4,7 @@ import path from 'node:path';
 import fg from 'fast-glob';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Config } from '../config.js';
-import { resolvePath, noteNameFromPath } from '../lib/vault.js';
+import { resolvePath, noteNameFromPath, resolveVault, vaultParamDesc } from '../lib/vault.js';
 import { assertSafePathAsync } from '../lib/security.js';
 import { extractWikilinks } from '../lib/wikilinks.js';
 import { ok, err, type GraphNode, type GraphEdge } from '../types/index.js';
@@ -14,16 +14,19 @@ export function registerGetGraph(server: McpServer, config: Config): void {
     'get_graph',
     {
       description:
-        'Get the connection graph of wikilinks across the vault. Returns nodes (notes) and edges (links between them). Optionally, start from a root note and limit depth to explore a specific neighborhood of connected notes.',
+        'Get the connection graph of wikilinks across a vault. Returns nodes (notes) and edges (links between them). Optionally, start from a root note and limit depth to explore a specific neighborhood of connected notes.',
       inputSchema: {
         rootNote: z.string().optional().describe('Path to a note to use as the starting point. If provided, only returns the subgraph reachable within the given depth.'),
         depth: z.number().int().min(1).max(10).optional().default(2).describe('How many hops from the root note to include (only applies when rootNote is set). Defaults to 2.'),
+        vault: z.string().optional().describe(vaultParamDesc(config)),
       },
     },
-    async ({ rootNote, depth }) => {
+    async ({ rootNote, depth, vault }) => {
       try {
+        const vc = resolveVault(config, vault);
+
         const files = await fg('**/*.md', {
-          cwd: config.vaultPath,
+          cwd: vc.path,
           absolute: true,
           dot: false,
           ignore: ['**/.obsidian-mcp-trash/**'],
@@ -32,7 +35,7 @@ export function registerGetGraph(server: McpServer, config: Config): void {
         // Build a map: noteName → relativePath
         const nameToPath = new Map<string, string>();
         for (const file of files) {
-          const rel = path.relative(config.vaultPath, file);
+          const rel = path.relative(vc.path, file);
           nameToPath.set(path.basename(file, '.md').toLowerCase(), rel);
           nameToPath.set(rel.replace(/\.md$/, '').toLowerCase(), rel);
         }
@@ -40,7 +43,7 @@ export function registerGetGraph(server: McpServer, config: Config): void {
         // Build adjacency map: relativePath → [linkedRelativePaths]
         const adjacency = new Map<string, string[]>();
         for (const file of files) {
-          const rel = path.relative(config.vaultPath, file);
+          const rel = path.relative(vc.path, file);
           const content = await fs.readFile(file, 'utf-8');
           const links = extractWikilinks(content);
 
@@ -57,9 +60,9 @@ export function registerGetGraph(server: McpServer, config: Config): void {
         let relevantNodes: Set<string>;
 
         if (rootNote) {
-          const rootResolved = resolvePath(config.vaultPath, rootNote);
-          await assertSafePathAsync(config.vaultPath, rootResolved);
-          const rootRel = path.relative(config.vaultPath, rootResolved);
+          const rootResolved = resolvePath(vc.path, rootNote);
+          await assertSafePathAsync(vc.path, rootResolved);
+          const rootRel = path.relative(vc.path, rootResolved);
 
           // BFS up to depth
           relevantNodes = new Set([rootRel]);
@@ -94,7 +97,7 @@ export function registerGetGraph(server: McpServer, config: Config): void {
           }
         }
 
-        return ok({ nodeCount: nodes.length, edgeCount: edges.length, nodes, edges });
+        return ok({ vault: vc.name, nodeCount: nodes.length, edgeCount: edges.length, nodes, edges });
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
       }

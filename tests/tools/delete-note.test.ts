@@ -39,7 +39,8 @@ describe('delete_note', () => {
     const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
     const { registerDeleteNote: reg } = await import('../../src/tools/delete-note.js');
     const roServer = new McpServer({ name: 'ro', version: '0' });
-    reg(roServer, { ...ctx.config, readOnly: true });
+    const roVaults = new Map([...ctx.config.vaults.entries()].map(([n, v]) => [n, { ...v, readOnly: true }]));
+    reg(roServer, { ...ctx.config, vaults: roVaults });
     const result = await callTool(roServer, 'delete_note', { path: 'x', confirm: true });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('read-only');

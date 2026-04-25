@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Config } from '../config.js';
 
+import { registerListVaults } from './list-vaults.js';
 import { registerReadNote } from './read-note.js';
 import { registerCreateNote } from './create-note.js';
 import { registerUpdateNote } from './update-note.js';
@@ -16,6 +17,9 @@ import { registerMoveNote } from './move-note.js';
 import { registerGetGraph } from './get-graph.js';
 
 export function registerAllTools(server: McpServer, config: Config): void {
+  // Vault discovery
+  registerListVaults(server, config);
+
   // Read tools
   registerReadNote(server, config);
   registerListNotes(server, config);

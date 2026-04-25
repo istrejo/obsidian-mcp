@@ -2,7 +2,7 @@ import { z } from 'zod/v3';
 import fs from 'node:fs/promises';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Config } from '../config.js';
-import { resolvePath, toRelativePath } from '../lib/vault.js';
+import { resolvePath, toRelativePath, resolveVault, vaultParamDesc } from '../lib/vault.js';
 import { assertSafePathAsync, assertNotReadOnly, assertFileSize } from '../lib/security.js';
 import { parseFrontmatter, stringifyFrontmatter, mergeFrontmatter } from '../lib/frontmatter.js';
 import { logger } from '../lib/logger.js';
@@ -19,23 +19,26 @@ export function registerManageFrontmatter(server: McpServer, config: Config): vo
         operation: z.enum(['get', 'set', 'merge', 'delete']).describe('Operation to perform: "get" reads metadata, "set" replaces it, "merge" updates specific fields, "delete" removes specific keys'),
         data: z.record(z.unknown()).optional().describe('Frontmatter data for "set" or "merge" operations (e.g. { tags: ["project"], status: "active" })'),
         keys: z.array(z.string()).optional().describe('Keys to remove for the "delete" operation (e.g. ["draft", "review-date"])'),
+        vault: z.string().optional().describe(vaultParamDesc(config)),
       },
     },
-    async ({ path: notePath, operation, data, keys }) => {
+    async ({ path: notePath, operation, data, keys, vault }) => {
       try {
+        const vc = resolveVault(config, vault);
+
         if (operation !== 'get') {
-          assertNotReadOnly(config.readOnly);
+          assertNotReadOnly(vc.readOnly);
         }
 
-        const resolved = resolvePath(config.vaultPath, notePath);
-        await assertSafePathAsync(config.vaultPath, resolved);
+        const resolved = resolvePath(vc.path, notePath);
+        await assertSafePathAsync(vc.path, resolved);
         await assertFileSize(resolved, config.maxFileSize);
 
         const raw = await fs.readFile(resolved, 'utf-8');
         const { data: existing, content } = parseFrontmatter(raw);
 
         if (operation === 'get') {
-          return ok({ path: toRelativePath(config.vaultPath, resolved), frontmatter: existing });
+          return ok({ vault: vc.name, path: toRelativePath(vc.path, resolved), frontmatter: existing });
         }
 
         let updated: Record<string, unknown>;
@@ -54,10 +57,10 @@ export function registerManageFrontmatter(server: McpServer, config: Config): vo
         const newContent = stringifyFrontmatter(updated, content);
         await fs.writeFile(resolved, newContent, 'utf-8');
 
-        const relative = toRelativePath(config.vaultPath, resolved);
-        logger.info('Frontmatter updated', { path: relative, operation });
+        const relative = toRelativePath(vc.path, resolved);
+        logger.info('Frontmatter updated', { vault: vc.name, path: relative, operation });
 
-        return ok({ path: relative, operation, frontmatter: updated });
+        return ok({ vault: vc.name, path: relative, operation, frontmatter: updated });
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
       }
