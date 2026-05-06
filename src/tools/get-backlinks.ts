@@ -4,7 +4,7 @@ import path from 'node:path';
 import fg from 'fast-glob';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Config } from '../config.js';
-import { resolvePath } from '../lib/vault.js';
+import { resolvePath, resolveVault, vaultParamDesc } from '../lib/vault.js';
 import { assertSafePathAsync } from '../lib/security.js';
 import { extractWikilinks, wikilinkMatchesNote } from '../lib/wikilinks.js';
 import { ok, err, type BacklinkResult } from '../types/index.js';
@@ -17,17 +17,19 @@ export function registerGetBacklinks(server: McpServer, config: Config): void {
         'Find all notes that link to a specific note using [[wikilinks]]. Use this to understand which notes reference a given note, discover related content, or analyze the connection structure of your vault.',
       inputSchema: {
         path: z.string().min(1).describe('Relative path to the note you want to find backlinks for (e.g. "Resources/book")'),
+        vault: z.string().optional().describe(vaultParamDesc(config)),
       },
     },
-    async ({ path: notePath }) => {
+    async ({ path: notePath, vault }) => {
       try {
-        const resolved = resolvePath(config.vaultPath, notePath);
-        await assertSafePathAsync(config.vaultPath, resolved);
+        const vc = resolveVault(config, vault);
+        const resolved = resolvePath(vc.path, notePath);
+        await assertSafePathAsync(vc.path, resolved);
 
-        const relativePath = path.relative(config.vaultPath, resolved);
+        const relativePath = path.relative(vc.path, resolved);
 
         const files = await fg('**/*.md', {
-          cwd: config.vaultPath,
+          cwd: vc.path,
           absolute: true,
           dot: false,
           ignore: ['**/.obsidian-mcp-trash/**'],
@@ -44,13 +46,14 @@ export function registerGetBacklinks(server: McpServer, config: Config): void {
 
           if (matching.length > 0) {
             backlinks.push({
-              path: path.relative(config.vaultPath, file),
+              path: path.relative(vc.path, file),
               wikilinks: matching,
             });
           }
         }
 
         return ok({
+          vault: vc.name,
           note: relativePath,
           backlinkCount: backlinks.length,
           backlinks,

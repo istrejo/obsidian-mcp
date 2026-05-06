@@ -96,7 +96,8 @@ describe('manage_frontmatter', () => {
       '../../src/tools/manage-frontmatter.js'
     );
     const roServer = new McpServer({ name: 'ro', version: '0' });
-    reg(roServer, { ...ctx.config, readOnly: true });
+    const roVaults = new Map([...ctx.config.vaults.entries()].map(([n, v]) => [n, { ...v, readOnly: true }]));
+    reg(roServer, { ...ctx.config, vaults: roVaults });
     const result = await callTool(roServer, 'manage_frontmatter', {
       path: 'fm-note',
       operation: 'set',

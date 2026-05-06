@@ -1,0 +1,6 @@
+[mcp_servers.obsidian]
+args = ["/Users/aletrejo/dev/obsidian-mcp/dist/index.js"]
+command = "node"
+
+[mcp_servers.obsidian.env]
+OBSIDIAN_VAULT_PATH = "/Users/aletrejo/Documents/Obsidian Vault"

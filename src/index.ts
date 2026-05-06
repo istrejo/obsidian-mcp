@@ -9,10 +9,11 @@ async function main(): Promise<void> {
   const server = createServer(config);
   const transport = new StdioServerTransport();
 
-  logger.info('obsidian-mcp starting', {
-    vault: config.vaultPath,
-    readOnly: config.readOnly,
-  });
+  const vaultSummary = [...config.vaults.entries()]
+    .map(([name, v]) => `${name}=${v.path}`)
+    .join(', ');
+
+  logger.info('obsidian-mcp starting', { vaults: vaultSummary });
 
   await server.connect(transport);
   logger.info('obsidian-mcp ready');

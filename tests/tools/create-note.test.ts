@@ -71,7 +71,8 @@ describe('create_note', () => {
   });
 
   it('returns ReadOnlyError in read-only mode', async () => {
-    const roConfig = { ...ctx.config, readOnly: true };
+    const roVaults = new Map([...ctx.config.vaults.entries()].map(([n, v]) => [n, { ...v, readOnly: true }]));
+    const roConfig = { ...ctx.config, vaults: roVaults };
     const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
     const { registerCreateNote: reg } = await import('../../src/tools/create-note.js');
     const roServer = new McpServer({ name: 'ro', version: '0' });
