@@ -1,6 +1,6 @@
 # @istrejo/obsidian-mcp
 
-> MCP server that connects Claude (Desktop & Code) to your Obsidian vault via direct filesystem access.
+> MCP server that connects Claude (Desktop & Code) and Codex to your Obsidian vault via direct filesystem access.
 
 [![npm version](https://img.shields.io/npm/v/@istrejo/obsidian-mcp)](https://www.npmjs.com/package/@istrejo/obsidian-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/@istrejo/obsidian-mcp)](https://www.npmjs.com/package/@istrejo/obsidian-mcp)
@@ -9,10 +9,10 @@
 
 ## Features
 
-- **13 powerful tools** for reading, writing, searching, and organizing notes
+- **14 powerful tools** for reading, writing, searching, and organizing notes
 - **Direct filesystem access** — no Obsidian plugins required, works even if Obsidian is closed
 - **Secure by design**: path traversal prevention, read-only mode, automatic backups before deletion
-- **Works with Claude Desktop AND Claude Code** via stdio transport
+- **Works with Claude Desktop, Claude Code, and Codex** via stdio transport
 - **Zero configuration** beyond pointing it at your vault path
 
 ## Requirements
@@ -71,11 +71,78 @@ Or manually edit `~/.claude/mcp.json`:
 }
 ```
 
+### For Codex
+
+Codex uses the same MCP stdio server, but the safe public default is **read-only first**. Start with read access, then explicitly opt in to write access when you need it.
+
+Run this command in your terminal:
+
+```bash
+codex mcp add obsidian \
+  --env OBSIDIAN_VAULT_PATH=/absolute/path/to/your/vault \
+  --env OBSIDIAN_READ_ONLY=true \
+  -- npx -y @istrejo/obsidian-mcp
+```
+
+Or use a project-scoped Codex config. Copy `.codex/config.example.toml` to `.codex/config.toml` and replace the placeholder vault path:
+
+```toml
+[mcp_servers.obsidian]
+command = "npx"
+args = ["-y", "@istrejo/obsidian-mcp"]
+
+[mcp_servers.obsidian.env]
+OBSIDIAN_VAULT_PATH = "/absolute/path/to/your/vault"
+OBSIDIAN_READ_ONLY = "true"
+```
+
+Then open Codex and run `/mcp` to verify the server is enabled.
+
+#### Enabling writes in Codex
+
+To use write tools (`create_note`, `update_note`, `move_note`, `delete_note`, etc.) in Codex, opt in twice:
+
+1. Set `OBSIDIAN_READ_ONLY=false`.
+2. Grant Codex sandbox access to the vault path.
+
+Per session:
+
+```bash
+codex --add-dir /absolute/path/to/your/vault
+```
+
+Or in `~/.codex/config.toml` / `.codex/config.toml`:
+
+```toml
+[sandbox_workspace_write]
+writable_roots = ["/absolute/path/to/your/vault"]
+```
+
+If you skip either step, writes will fail. That is expected: one layer controls MCP behavior, and the other controls Codex sandbox access.
+
+#### Local development with Codex
+
+For local development, avoid pointing Codex at ignored `dist/` output unless you just built it. Also avoid `npm run dev` as the MCP command because npm can write lifecycle output to stdout, and MCP stdio requires stdout to contain only protocol messages.
+
+Use the local TypeScript runner directly instead:
+
+```toml
+[mcp_servers.obsidian]
+command = "node"
+args = ["./node_modules/tsx/dist/cli.mjs", "./src/index.ts"]
+cwd = "/absolute/path/to/obsidian-mcp"
+
+[mcp_servers.obsidian.env]
+OBSIDIAN_VAULT_PATH = "/absolute/path/to/your/vault"
+OBSIDIAN_READ_ONLY = "true"
+```
+
 ## Configuration
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OBSIDIAN_VAULT_PATH` | ✅ Yes | — | Absolute path to your Obsidian vault directory |
+| `OBSIDIAN_CONFIG` | No | — | Path to a JSON config file for multiple vaults. Takes precedence over `OBSIDIAN_VAULT_PATH` |
+| `OBSIDIAN_VAULT_PATH` | ✅ Yes, unless `OBSIDIAN_CONFIG` is set | — | Absolute path to your Obsidian vault directory |
 | `OBSIDIAN_READ_ONLY` | No | `false` | Set to `true` to disable all write/delete operations |
 | `OBSIDIAN_MAX_FILE_SIZE` | No | `10485760` (10 MB) | Maximum file size in bytes for read/write operations |
 | `OBSIDIAN_BACKUP_ENABLED` | No | `true` | Whether to create backups before deleting notes |
@@ -85,6 +152,7 @@ Or manually edit `~/.claude/mcp.json`:
 
 | Tool | Description | Example Prompt |
 |------|-------------|----------------|
+| `list_vaults` | List configured vaults and their safety settings | *"Which Obsidian vaults are available?"* |
 | `read_note` | Read the full content and frontmatter of a note | *"Read my note at Projects/my-project"* |
 | `list_notes` | List all notes, optionally filtered by folder | *"List all notes in the Resources folder"* |
 | `list_recent` | Show the most recently modified notes | *"What are my 5 most recently edited notes?"* |
@@ -102,10 +170,23 @@ Or manually edit `~/.claude/mcp.json`:
 ## Security
 
 - **Path traversal prevention:** All paths are validated to remain within your vault boundaries. Requests like `../../../etc/passwd` are rejected outright.
-- **Read-only mode:** Set `OBSIDIAN_READ_ONLY=true` to disable all write and delete operations. Useful for giving Claude read access to your vault without risk.
+- **Read-only mode:** Set `OBSIDIAN_READ_ONLY=true` to disable all write and delete operations. Useful for giving Claude or Codex read access to your vault without risk.
 - **Automatic backups:** Before deleting any note, a copy is saved to `.obsidian-mcp-trash/{timestamp}/` inside your vault. Set `OBSIDIAN_BACKUP_ENABLED=false` to disable.
 - **File size limits:** Files larger than `OBSIDIAN_MAX_FILE_SIZE` bytes are rejected to prevent runaway reads/writes.
 - **Structured logs:** All destructive operations (create, update, delete, move) are logged to stderr with timestamps.
+
+## Codex Troubleshooting
+
+### `EPERM: operation not permitted, scandir '/path/to/vault'`
+
+This usually means Codex or macOS blocked filesystem access before `obsidian-mcp` could read your vault.
+
+Check these in order:
+
+1. **Vault outside workspace:** start Codex with `--add-dir /absolute/path/to/your/vault`, or add the vault to `sandbox_workspace_write.writable_roots`.
+2. **macOS protected folders:** if the vault is under `Documents`, `Desktop`, iCloud Drive, or another protected location, grant Full Disk Access / Files and Folders permission to the terminal, IDE, or Codex app you use.
+3. **Wrong path:** verify the path is absolute and points to the vault directory, not an individual note.
+4. **Write attempts in read-only mode:** if the MCP returns `Vault is in read-only mode`, Codex reached the vault correctly; now set `OBSIDIAN_READ_ONLY=false` only if you intentionally want writes.
 
 ## Usage Examples
 

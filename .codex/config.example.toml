@@ -1,0 +1,35 @@
+# Example project-scoped Codex MCP configuration.
+#
+# Copy this file to `.codex/config.toml` and replace placeholder paths.
+# Keep `.codex/config.toml` local only: it contains machine-specific vault paths.
+#
+# Public/package usage. Safe default: read-only first.
+[mcp_servers.obsidian]
+command = "npx"
+args = ["-y", "@istrejo/obsidian-mcp"]
+startup_timeout_sec = 10
+tool_timeout_sec = 60
+
+[mcp_servers.obsidian.env]
+OBSIDIAN_VAULT_PATH = "/absolute/path/to/your/vault"
+OBSIDIAN_READ_ONLY = "true"
+
+# To enable write tools in Codex, you must opt in twice:
+# 1. Set OBSIDIAN_READ_ONLY = "false" above.
+# 2. Grant Codex sandbox access to the vault path, either here:
+#
+# [sandbox_workspace_write]
+# writable_roots = ["/absolute/path/to/your/vault"]
+#
+# Or per session:
+# codex --add-dir /absolute/path/to/your/vault
+#
+# Local development alternative without stale dist:
+#
+# [mcp_servers.obsidian]
+# command = "node"
+# args = ["./node_modules/tsx/dist/cli.mjs", "./src/index.ts"]
+# cwd = "/absolute/path/to/obsidian-mcp"
+#
+# Do not use `npm run dev` as the MCP command: npm can write lifecycle output to
+# stdout, and MCP stdio requires stdout to contain only protocol messages.

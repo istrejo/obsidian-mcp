@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+.codex/config.toml
+!.codex/config.example.toml
 *.log
 .env
 .DS_Store
